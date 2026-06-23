@@ -6,188 +6,206 @@ import time
 import re
 import datetime
 import platform
-from PIL import Image, ImageTk
+import math
+import random
+import json
+import urllib.request
+import urllib.parse
+import subprocess
+import webbrowser
 
-class LocalAssistantApp:
+# Optional Image Support
+try:
+    from PIL import Image, ImageTk, ImageStat
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+
+class WebEngine:
+    def __init__(self):
+        self.user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+
+    def _fetch(self, url):
+        req = urllib.request.Request(url, headers={'User-Agent': self.user_agent})
+        with urllib.request.urlopen(req, timeout=15) as response:
+            return response.read().decode('utf-8', errors='ignore')
+
+    def search(self, query):
+        try:
+            encoded = urllib.parse.quote(query)
+            # Fetch from DDG HTML for raw snippets
+            html = self._fetch(f"https://html.duckduckgo.com/html/?q={encoded}")
+            snippets = re.findall(r'<a class="result__snippet".*?>(.*?)</a>', html, re.DOTALL)
+            clean_snippets = [re.sub(r'<.*?>', '', s).strip() for s in snippets if len(s) > 30]
+            
+            # Fetch Wiki for core identity of the topic
+            wiki_res = ""
+            try:
+                w_search = json.loads(self._fetch(f"https://en.wikipedia.org/w/api.php?action=opensearch&search={encoded}&limit=1&format=json"))
+                if w_search[1]:
+                    title = w_search[1][0]
+                    w_sum = json.loads(self._fetch(f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(title.replace(' ', '_'))}"))
+                    wiki_res = w_sum.get("extract", "")
+            except: pass
+
+            return wiki_res, clean_snippets[:3]
+        except:
+            return None, []
+
+class SmartBrain:
+    def __init__(self):
+        self.web = WebEngine()
+        self.context = {"last_topic": None, "user_name": "User"}
+        self.conversational_patterns = {
+            r"hello|hi|hey|yo": ["Hey! How's it going?", "Hi! What's on your mind?", "Yo! Ready for some answers?"],
+            r"how are you": ["I'm doing great, feeling fast and local. You?", "Living the dream in your RAM. How about you?"],
+            r"who are you": ["I'm Neon, your local-core assistant. No big clouds, just me and the web."],
+            r"what can you do": ["I can scour the web, solve math, analyze files, and just chat. Try me!"],
+            r"thanks|thank you": ["No problem!", "Anytime!", "Happy to help!"]
+        }
+
+    def get_response(self, text):
+        text_lower = text.lower().strip()
+        
+        # 1. Check for Conversational Matches
+        for pattern, responses in self.conversational_patterns.items():
+            if re.search(pattern, text_lower):
+                return random.choice(responses)
+
+        # 2. System / Tools
+        if "time" in text_lower: return f"It is {datetime.datetime.now().strftime('%I:%M %p')}."
+        if "system" in text_lower: return f"System: {platform.system()} | Host: {platform.node()}"
+        
+        # 3. Math
+        if re.search(r'[\d\+\-\*\/\(\)\^]', text) and any(c in text for c in "+-*/^%"):
+            try:
+                expr = text.replace("^", "**")
+                res = eval(re.sub(r'[^0-9\+\-\*\/\(\)\.\%\s\*\^a-zA-Z]', '', expr), {"__builtins__": None}, {k: getattr(math, k) for k in dir(math) if not k.startswith("_")})
+                return f"Calculated: {res}"
+            except: pass
+
+        # 4. Web Scouring (The Core)
+        wiki, snippets = self.web.search(text)
+        if wiki or snippets:
+            self.context["last_topic"] = text
+            resp = ""
+            if wiki: resp += f"{wiki}\n\n"
+            if snippets:
+                resp += "I also found these details:\n" + "\n".join([f"• {s}" for s in snippets])
+            return resp if resp else "I couldn't find a detailed answer for that."
+
+        return "I'm not exactly sure about that. Could you rephrase or ask me something else?"
+
+class NeonUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Smart Local Assistant")
-        self.root.geometry("700x800")
-        self.root.configure(bg="#1e1e1e")
-
-        self.attached_file_path = None
-        self.setup_ui()
-
-    def setup_ui(self):
-        # 1. Chat Logs Area
-        self.chat_display = scrolledtext.ScrolledText(
-            self.root, wrap=tk.WORD, state='disabled',
-            bg="#2d2d2d", fg="#ffffff", insertbackground="white",
-            font=("Consolas", 11), bd=0, highlightthickness=1, highlightbackground="#3f3f3f"
-        )
-        self.chat_display.pack(padx=15, pady=(15, 5), fill=tk.BOTH, expand=True)
-
-        # Configure text colors
-        self.chat_display.tag_config("user", foreground="#0098ff", font=("Consolas", 11, "bold"))
-        self.chat_display.tag_config("bot", foreground="#00ffcc", font=("Consolas", 11))
-        self.chat_display.tag_config("system", foreground="#aaaaaa", font=("Consolas", 10, "italic"))
-        self.chat_display.tag_config("code", foreground="#f8f8f2", background="#333333", font=("Consolas", 10))
-
-        # 2. File Attachment Status Label
-        self.file_label = tk.Label(
-            self.root, text="No files or images attached.",
-            bg="#1e1e1e", fg="#aaaaaa", font=("Arial", 10)
-        )
-        self.file_label.pack(padx=15, pady=2, anchor="w")
-
-        # 3. Bottom Dock Control Container
-        bottom_frame = tk.Frame(self.root, bg="#1e1e1e")
-        bottom_frame.pack(padx=15, pady=(5, 15), fill=tk.X, anchor="s")
-
-        # Attachment Button
-        self.attach_btn = tk.Button(
-            bottom_frame, text="📎 Attach", command=self.select_file,
-            bg="#3a3a3a", fg="#ffffff", activebackground="#4a4a4a", activeforeground="#ffffff",
-            bd=0, padx=10, pady=8, font=("Arial", 10, "bold"), cursor="hand2"
-        )
-        self.attach_btn.pack(side=tk.LEFT, padx=(0, 10))
-
-        # Text Input field
-        self.input_field = tk.Entry(
-            bottom_frame, bg="#2d2d2d", fg="#ffffff", insertbackground="white",
-            bd=0, highlightthickness=1, highlightbackground="#3f3f3f",
-            font=("Arial", 12), width=40
-        )
-        self.input_field.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=6)
-        self.input_field.bind("<Return>", lambda event: self.send_message())
-
-        # Send Button
-        self.send_btn = tk.Button(
-            bottom_frame, text="Send", command=self.send_message,
-            bg="#007acc", fg="#ffffff", activebackground="#0098ff", activeforeground="#ffffff",
-            bd=0, padx=15, pady=8, font=("Arial", 10, "bold"), cursor="hand2"
-        )
-        self.send_btn.pack(side=tk.RIGHT, padx=(10, 0))
-
-    def select_file(self):
-        file_path = filedialog.askopenfilename(
-            title="Select a File",
-            filetypes=[("All Files", "*.*"), ("Text/Code Files", "*.py *.java *.txt *.json *.md *.html *.css *.js"), ("Images", "*.png *.jpg *.jpeg *.webp")]
-        )
-        if file_path:
-            self.attached_file_path = file_path
-            filename = os.path.basename(file_path)
-            self.file_label.config(text=f"Attached: {filename}", fg="#00ff66")
-
-    def append_to_chat(self, sender, text, tag):
-        self.chat_display.config(state='normal')
-        self.chat_display.insert(tk.END, f"{sender}: ", tag)
+        self.root.title("NEON CORE")
+        self.root.geometry("800x900")
+        self.root.configure(bg="#000000")
         
-        # Check if text contains "code" markers
-        if "```" in text:
-            parts = text.split("```")
-            for i, part in enumerate(parts):
-                if i % 2 == 1: # This is inside code block
-                    self.chat_display.insert(tk.END, part, "code")
-                else:
-                    self.chat_display.insert(tk.END, part)
-        else:
-            self.chat_display.insert(tk.END, text)
-            
-        self.chat_display.insert(tk.END, "\n\n")
-        self.chat_display.config(state='disabled')
-        self.chat_display.yview(tk.END)
-
-    def send_message(self):
-        user_text = self.input_field.get().strip()
-
-        if not user_text and not self.attached_file_path:
-            return
-
-        if user_text:
-            self.append_to_chat("You", user_text, "user")
-        if self.attached_file_path:
-            self.append_to_chat("System", f"[Working with file: {os.path.basename(self.attached_file_path)}]", "system")
-
-        self.input_field.delete(0, tk.END)
-        self.send_btn.config(state="disabled")
-
-        threading.Thread(target=self.process_request, args=(user_text, self.attached_file_path), daemon=True).start()
-
-        self.attached_file_path = None
-        self.file_label.config(text="No files or images attached.", fg="#aaaaaa")
-
-    def process_request(self, prompt, file_path):
-        time.sleep(0.3)
-        prompt_lower = prompt.lower()
-        response = ""
-
-        # --- SMART LOGIC ENGINE ---
+        self.orange = "#FF5F00"
+        self.cyan = "#00FFCC"
+        self.brain = SmartBrain()
+        self.attached_path = None
         
-        # 1. Math Evaluation
-        if re.match(r'^[\d\s\+\-\*\/\(\)\.]+$', prompt) and any(c in prompt for c in "+-*/"):
-            try:
-                result = eval(prompt)
-                response = f"The result of '{prompt}' is: **{result}**"
-            except:
-                response = "I tried to calculate that, but the expression seems invalid."
+        self._build_layout()
 
-        # 2. File Analysis
-        elif file_path and ("read" in prompt_lower or "content" in prompt_lower or "show" in prompt_lower or not prompt):
-            try:
-                ext = os.path.splitext(file_path)[1].lower()
-                if ext in ['.txt', '.py', '.java', '.json', '.md', '.html', '.css', '.js']:
-                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                        content = f.read()
-                        word_count = len(content.split())
-                        char_count = len(content)
-                        response = f"I've analyzed **{os.path.basename(file_path)}**.\n"
-                        response += f"Stats: {word_count} words, {char_count} characters.\n\n"
-                        response += f"Content Preview:\n```\n{content[:1000]}{'...' if len(content) > 1000 else ''}\n```"
-                else:
-                    response = f"I see the file '{os.path.basename(file_path)}', but it's a binary or image file. I can't read its text content, but I can confirm it exists and is {os.path.getsize(file_path)} bytes."
-            except Exception as e:
-                response = f"I ran into an error reading the file: {e}"
-
-        # 3. File Search
-        elif file_path and "find" in prompt_lower:
-            search_term = prompt_lower.replace("find", "").strip()
-            if search_term:
-                try:
-                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()
-                        matches = [f"Line {i+1}: {line.strip()}" for i, line in enumerate(lines) if search_term in line.lower()]
-                        if matches:
-                            response = f"I found '{search_term}' in **{os.path.basename(file_path)}** at these locations:\n\n" + "\n".join(matches[:10])
-                            if len(matches) > 10: response += f"\n...and {len(matches)-10} more matches."
-                        else:
-                            response = f"I couldn't find '{search_term}' in that file."
-                except:
-                    response = "I couldn't search through that file."
-
-        # 4. System Info
-        elif "system" in prompt_lower or "info" in prompt_lower:
-            response = f"System Info:\n- OS: {platform.system()} {platform.release()}\n- Time: {datetime.datetime.now().strftime('%H:%M:%S')}\n- Python: {platform.python_version()}"
-
-        # 5. General Conversations
-        elif any(word in prompt_lower for word in ["hello", "hi", "hey"]):
-            response = "Hello! I'm your local assistant. I can calculate math, read/search files you attach, and give you system info—all without any external AI models."
-        elif "time" in prompt_lower:
-            response = f"The current local time is {datetime.datetime.now().strftime('%I:%M %p')}."
-        elif "help" in prompt_lower:
-            response = "You can ask me to:\n1. Solve math (e.g., '25 * 4')\n2. Read an attached file ('show content')\n3. Find text in a file ('find keyword')\n4. Tell you the 'time' or 'system info'."
+    def _build_layout(self):
+        # 1. Header Bar
+        header = tk.Frame(self.root, bg="#080808", height=60)
+        header.pack(side=tk.TOP, fill=tk.X)
+        header.pack_propagate(False)
         
-        # 6. Default Fallback
-        else:
-            if prompt:
-                response = f"I'm a rule-based assistant and don't have a full AI brain, so I'm not sure how to respond to '{prompt}'. \n\nTry asking for 'help' to see what I can do!"
+        tk.Label(header, text="NEON CORE AI", bg="#080808", fg=self.orange, font=("Consolas", 16, "bold")).pack(side=tk.LEFT, padx=20)
+        self.status_dot = tk.Label(header, text="●", bg="#080808", fg="#00FF00", font=("Arial", 14))
+        self.status_dot.pack(side=tk.RIGHT, padx=(0, 5))
+        self.status_text = tk.Label(header, text="SYSTEM ONLINE", bg="#080808", fg="#555555", font=("Consolas", 9))
+        self.status_text.pack(side=tk.RIGHT, padx=(0, 20))
+
+        # 2. Chat Display Area
+        chat_frame = tk.Frame(self.root, bg="#000000")
+        chat_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        self.display = scrolledtext.ScrolledText(
+            chat_frame, bg="#000000", fg="#FFFFFF", font=("Consolas", 12),
+            bd=0, wrap=tk.WORD, state='disabled', padx=15, pady=15,
+            highlightthickness=1, highlightbackground="#111111"
+        )
+        self.display.pack(fill=tk.BOTH, expand=True)
+        self.display.tag_config("user_tag", foreground=self.orange, font=("Consolas", 12, "bold"))
+        self.display.tag_config("bot_tag", foreground=self.cyan, font=("Consolas", 12, "bold"))
+
+        # 3. Interaction Area (Footer)
+        footer = tk.Frame(self.root, bg="#000000", height=80) # Dark base
+        footer.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
+        footer.pack_propagate(False)
+        
+        input_container = tk.Frame(footer, bg="#111111", highlightthickness=1, highlightbackground="#333333")
+        input_container.pack(fill=tk.BOTH, expand=True)
+
+        self.btn_file = tk.Button(input_container, text="+", bg="#111111", fg=self.orange, bd=0, font=("Arial", 18), activebackground="#1a1a1a", command=self.pick_file)
+        self.btn_file.pack(side=tk.LEFT, padx=10)
+
+        # Fix for the entry bar - removed pady and added ipady to fill container vertically
+        self.entry = tk.Entry(input_container, bg="#111111", fg="#FFFFFF", font=("Consolas", 13), bd=0, insertbackground=self.orange)
+        self.entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.entry.bind("<Return>", lambda e: self.send())
+
+        self.btn_send = tk.Button(input_container, text="➜", bg="#111111", fg=self.orange, bd=0, font=("Arial", 18), activebackground="#1a1a1a", command=self.send)
+        self.btn_send.pack(side=tk.RIGHT, padx=10)
+
+    def pick_file(self):
+        path = filedialog.askopenfilename()
+        if path:
+            self.attached_path = path
+            self.set_status(f"LOADED: {os.path.basename(path)}", self.orange)
+
+    def set_status(self, text, color="#555555"):
+        self.status_text.config(text=text.upper(), fg=color)
+        self.status_dot.config(fg="#FF8C00" if "THINKING" in text.upper() else "#00FF00")
+
+    def send(self):
+        text = self.entry.get().strip()
+        if not text and not self.attached_path: return
+        
+        self.add_msg("YOU", text, "user_tag")
+        self.entry.delete(0, tk.END)
+        self.set_status("THINKING...", self.orange)
+        
+        threading.Thread(target=self._process, args=(text,)).start()
+
+    def _process(self, text):
+        # Handle file if attached
+        if self.attached_path:
+            filename = os.path.basename(self.attached_path)
+            ext = os.path.splitext(self.attached_path)[1].lower()
+            resp = ""
+            if ext in ['.png', '.jpg', '.jpeg', '.webp'] and HAS_PIL:
+                with Image.open(self.attached_path) as img:
+                    resp = f"Image '{filename}' detected. It's {img.width}x{img.height} pixels. Ready for instructions."
             else:
-                response = "How can I help you today?"
+                try:
+                    with open(self.attached_path, "r", encoding="utf-8", errors="ignore") as f:
+                        content = f.read(1000)
+                        resp = f"File '{filename}' loaded. Preview:\n\n{content}..."
+                except: resp = "Error reading the file."
+            self.attached_path = None
+            self.root.after(0, lambda: self.add_msg("NEON", resp, "bot_tag"))
+        else:
+            resp = self.brain.get_response(text)
+            self.root.after(0, lambda: self.add_msg("NEON", resp, "bot_tag"))
+        
+        self.root.after(0, lambda: self.set_status("SYSTEM ONLINE"))
 
-        self.root.after(0, self.append_to_chat, "Assistant", response, "bot")
-        self.root.after(0, lambda: self.send_btn.config(state="normal"))
+    def add_msg(self, sender, msg, tag):
+        self.display.config(state='normal')
+        self.display.insert(tk.END, f"\n{sender}\n", tag)
+        self.display.insert(tk.END, f"{msg}\n")
+        self.display.config(state='disabled')
+        self.display.yview(tk.END)
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = LocalAssistantApp(root)
+    NeonUI(root)
     root.mainloop()
+
