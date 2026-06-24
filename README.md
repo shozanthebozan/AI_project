@@ -1,4 +1,4 @@
 # AI_project
 Tryna make an ai from basically scratch, on python.
-and ihatereddit635 (ansh bhatia) is in on it too
-our goals are to make it run on linux windows android no apple cause sideloading and mac optmization problems.
+
+**`ihatereddit635` and me, `shozanthebozan` are in this, this ai can be run anywhere with a terminal, even a jailbroken iphone 6 with python 3.9! Right now this thing can recognise image proportions (size), tell the local time on your computer, search the wiki for answers, do simple maths, all in your RAM! Keep visiting us for more changes.**
