@@ -1,3 +1,6 @@
+import base64
+import datetime
+import html
 import json
 import math
 import os
@@ -7,20 +10,17 @@ import threading
 import tkinter as tk
 import urllib.parse
 import urllib.request
-import datetime
-import html
-import base64
-from tkinter import filedialog, scrolledtext, messagebox, simpledialog, ttk
+from tkinter import filedialog, scrolledtext, messagebox, simpledialog
 
 # ============================================================================
 # PERSISTENT STORAGE (Safe Base64 Encoding)
 # ============================================================================
 # NEON_HISTORY_START
-NEON_HISTORY_B64 = 'eyJjaGF0cyI6IHsiMSI6IHsibmFtZSI6ICJOZXcgU2Vzc2lvbiIsICJ0aW1lIjogIjIwMjYtMDYtMjdUMTI6MTU6MTYuNTMxOTIwIn19LCAibWVzc2FnZXMiOiB7IjEiOiBbeyJyb2xlIjogInVzZXIiLCAidGV4dCI6ICJoaSJ9LCB7InJvbGUiOiAiYm90IiwgInRleHQiOiAiTjMwTiBDMFIzIEFJIE9OTElORS4ifV19LCAibmV4dF9pZCI6IDJ9'
+NEON_HISTORY_B64 = 'eyJjaGF0cyI6IHsiMSI6IHsibmFtZSI6ICJOZXcgU2Vzc2lvbiIsICJ0aW1lIjogIjIwMjYtMDYtMjdUMTI6MTU6MTYuNTMxOTIwIn19LCAibWVzc2FnZXMiOiB7IjEiOiBbeyJyb2xlIjogInVzZXIiLCAidGV4dCI6ICJoaSJ9LCB7InJvbGUiOiAiYm90IiwgInRleHQiOiAiWC1DMFIzIE9NTklTIFBSRVBBUkVEOiBHbG9iYWwgU3ludGhlc2lzIEVuZ2luZSBBY3RpdmUuIn0sIHsicm9sZSI6ICJ1c2VyIiwgInRleHQiOiAiaGVsbG8gbXkgbmFtZSBpcyBhbnNoIn0sIHsicm9sZSI6ICJib3QiLCAidGV4dCI6ICJJJ20gbm90IHF1aXRlIHN1cmUgYWJvdXQgdGhhdCBvbmUuIENvdWxkIHlvdSBnaXZlIG1lIG1vcmUgZGV0YWlscyBvciBjaGVjayB0aGUgc3BlbGxpbmc/In0sIHsicm9sZSI6ICJ1c2VyIiwgInRleHQiOiAiaGVsbG8ifSwgeyJyb2xlIjogImJvdCIsICJ0ZXh0IjogIkhleSEgSSdtIE5FT04uIEknbSBvbmxpbmUgYW5kIHJlYWR5IHRvIGhlbHAuIFdoYXQncyBvbiB5b3VyIG1pbmQ/In0sIHsicm9sZSI6ICJ1c2VyIiwgInRleHQiOiAibXkgbmFtZSBpcyBhbnNoIn0sIHsicm9sZSI6ICJib3QiLCAidGV4dCI6ICJJJ20gbm90IHF1aXRlIHN1cmUgYWJvdXQgdGhhdCBvbmUuIENvdWxkIHlvdSBnaXZlIG1lIG1vcmUgZGV0YWlscyBvciBjaGVjayB0aGUgc3BlbGxpbmc/In0sIHsicm9sZSI6ICJ1c2VyIiwgInRleHQiOiAiaGkgbXkgbmFtZSBpcyBhbnNoIn0sIHsicm9sZSI6ICJib3QiLCAidGV4dCI6ICJOaWNlIHRvIG1lZXQgeW91LCBBbnNoISBJJ20gTkVPTiwgYnkgdGhlIHdheS4gSG93IGNhbiBJIGhlbHAgeW91IHRvZGF5PyJ9LCB7InJvbGUiOiAidXNlciIsICJ0ZXh0IjogImNhbiB5b3UgZmluZCBpbmZvIG9uIHRoZSBtaSAxMSB1bHRyYT8ifSwgeyJyb2xlIjogImJvdCIsICJ0ZXh0IjogIkknbSBub3QgcXVpdGUgc3VyZSBhYm91dCB0aGF0IG9uZS4gQ291bGQgeW91IGdpdmUgbWUgbW9yZSBkZXRhaWxzIG9yIGNoZWNrIHRoZSBzcGVsbGluZz8ifSwgeyJyb2xlIjogInVzZXIiLCAidGV4dCI6ICJoaSBteSBuYW1lIGlzIGFuc2gifSwgeyJyb2xlIjogImJvdCIsICJ0ZXh0IjogIk5pY2UgdG8gbWVldCB5b3UsIEFuc2ghIEknbSBORU9OLCBieSB0aGUgd2F5LiBIb3cgY2FuIEkgaGVscCB5b3UgdG9kYXk/In0sIHsicm9sZSI6ICJ1c2VyIiwgInRleHQiOiAiZ2l2ZSBtZSBpbmZvIG9uIHRoZSBtaSAxMSJ9LCB7InJvbGUiOiAiYm90IiwgInRleHQiOiAiSSdtIG5vdCBxdWl0ZSBzdXJlIGFib3V0IHRoYXQgb25lLiBDb3VsZCB5b3UgZ2l2ZSBtZSBtb3JlIGRldGFpbHMgb3IgY2hlY2sgdGhlIHNwZWxsaW5nPyJ9LCB7InJvbGUiOiAidXNlciIsICJ0ZXh0IjogIm1pIDExIn0sIHsicm9sZSI6ICJib3QiLCAidGV4dCI6ICJIZXJlIGlzIHRoZSBmYWN0dWFsIHN1bW1hcnkgZm9yIE1JIDExOlxuXG5UaGUgWGlhb21pIDExIGlzIGFuIEFuZHJvaWQtYmFzZWQgaGlnaC1lbmQgc21hcnRwaG9uZSBkZXZlbG9wZWQgYnkgWGlhb21pIEluYy4gSXQgd2FzIGludHJvZHVjZWQgYXMgdGhlIHN1Y2Nlc3NvciB0byB0aGUgWGlhb21pIDEwIHNlcmllcyBhbmQgc2VydmVzIGFzIHRoZSBmbGFnc2hpcCBtb2RlbCBpbiB0aGUgWGlhb21pIDExIGxpbmV1cC4gVGhlIGRldmljZSBmZWF0dXJlcyB1cGdyYWRlZCBoYXJkd2FyZSBzcGVjaWZpY2F0aW9ucywgaW5jbHVkaW5nIGEgaGlnaC1yZXNvbHV0aW9uIGRpc3BsYXkgYW5kIGltcHJvdmVkIGNhbWVyYSBzeXN0ZW0sIGFpbWVkIGF0IGNvbXBldGluZyB3aXRoIG90aGVyIHByZW1pdW0gc21hcnRwaG9uZXMuIFRoZSBYaWFvbWkgMTEgd2FzIGZpcnN0IHVudmVpbGVkIGluIENoaW5hIGluIERlY2VtYmVyIDIwMjAgYW5kIGxhdW5jaGVkIGdsb2JhbGx5IG9uIDggRmVicnVhcnkgMjAyMS4ifV19LCAibmV4dF9pZCI6IDJ9'
 # NEON_HISTORY_END
 
 # NEON_SETTINGS_START
-NEON_SETTINGS_B64 = 'eyJ0aGVtZSI6ICJTb2Z0IE5pZ2h0IChHcmVlbikiLCAiaW50ZWxsaWdlbmNlIjogIkRlZXAiLCAicmVzcG9uc2Vfc3R5bGUiOiAiRGV0YWlsZWQiLCAic3BlZWQiOiAiTm9ybWFsIiwgInJlc3VsdF9jb3VudCI6IDE1LCAiZm9udF9zaXplIjogMTIsICJ3ZWJfc2VhcmNoIjogdHJ1ZSwgIndpa2lwZWRpYSI6IHRydWUsICJsaXZlX3NlYXJjaCI6IHRydWUsICJnaXRodWJfc2VhcmNoIjogZmFsc2UsICJyZWRkaXRfc2VhcmNoIjogZmFsc2UsICJuZXdzX3NlYXJjaCI6IGZhbHNlLCAiYWRfZmlsdGVyIjogdHJ1ZSwgInNhdmVfbWVtb3J5IjogdHJ1ZSwgInNhdmVfbG9jYWxseSI6IGZhbHNlLCAic2F2ZV9wYXRoIjogIiJ9'
+NEON_SETTINGS_B64 = 'eyJ0aGVtZSI6ICJOZW9uIE9yYW5nZSIsICJpbnRlbGxpZ2VuY2UiOiAiRGVlcCIsICJyZXNwb25zZV9zdHlsZSI6ICJEZXRhaWxlZCIsICJzcGVlZCI6ICJEZWVwIiwgInJlc3VsdF9jb3VudCI6IDIwLCAiZm9udF9zaXplIjogMTIsICJ3ZWJfc2VhcmNoIjogdHJ1ZSwgIndpa2lwZWRpYSI6IHRydWUsICJsaXZlX3NlYXJjaCI6IHRydWUsICJnaXRodWJfc2VhcmNoIjogZmFsc2UsICJyZWRkaXRfc2VhcmNoIjogZmFsc2UsICJuZXdzX3NlYXJjaCI6IGZhbHNlLCAiYWRfZmlsdGVyIjogdHJ1ZSwgInNhdmVfbWVtb3J5IjogdHJ1ZSwgInNhdmVfbG9jYWxseIjogZmFsc2UsICJzYXZlX3BhdGgiOiAiIn0='
 # NEON_SETTINGS_END
 
 def _decode_store(b64_str):
@@ -31,165 +31,211 @@ NEON_HISTORY = _decode_store(NEON_HISTORY_B64)
 NEON_SETTINGS = _decode_store(NEON_SETTINGS_B64)
 
 try:
-    from PIL import Image, ImageTk, ImageStat
+    from PIL import Image, ImageTk
     HAS_PIL = True
-except ImportError:
+except:
     HAS_PIL = False
 
 # ============================================================================
-# C0R3-X BRAIN: ADVANCED COGNITIVE SYNTHESIS (V5)
+# LIVE DATA COLLECTOR
 # ============================================================================
-
-class ThinkingBrain:
-    """
-    C0R3-X Logic Engine:
-    Uses multi-stage query decomposition, location-aware heuristics,
-    and a recursive synthesis layer to provide high-quality intelligence.
-    """
+class LiveDataCollector:
     def __init__(self, settings=None):
         self.settings = settings or {}
-        self.user_agents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
-        ]
-        self.last_subject = ""
-        self.local_keywords = ["rockingham", "wellard", "perth", "wa", "australia", "near", "nearby", "local"]
-        self.intent_patterns = {
-            "shopping": r"\b(buy|get|shop|store|grocer|price|cost|sale|mall|market)\b",
-            "food": r"\b(restaurant|cafe|eat|drink|food|dinner|lunch|breakfast|takeaway|menu)\b",
-            "howto": r"\b(how to|step|guide|tutorial|way to|fix|repair)\b",
-            "factual": r"\b(what is|who is|define|meaning of|history of|facts about)\b"
-        }
-
-    def update_settings(self, settings): self.settings = settings
-
-    def _fetch(self, url, timeout=15):
+        self.user_agents = ['Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36']
+    
+    def _fetch(self, url, timeout=10):
         try:
             req = urllib.request.Request(url, headers={'User-Agent': random.choice(self.user_agents)})
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 return response.read().decode('utf-8', errors='ignore')
         except: return ""
 
-    def _clean_html(self, text):
+    def get_weather(self, city):
+        key = self.settings.get("weather_api_key")
+        if not key: return "No weather API key found."
+        try:
+            url = f"https://api.openweathermap.org/data/2.5/weather?q={urllib.parse.quote(city)}&appid={key}&units=metric"
+            data = json.loads(self._fetch(url))
+            return f"🌡️ {city.title()}: {data['main']['temp']}°C, {data['weather'][0]['description']}"
+        except: return "Couldn't fetch weather."
+
+# ============================================================================
+# APEX-OMNIS BRAIN V16: HYPER-LOGIC & KNOWLEDGE
+# ============================================================================
+
+class ThinkingBrain:
+    """
+    V16 APEX-OMNIS: The ultimate logic engine.
+    Combines common knowledge, deep research, and intuitive reasoning.
+    """
+    def __init__(self, settings=None):
+        self.settings = settings or {}
+        self.live = LiveDataCollector(settings)
+        self.last_subject = ""
+        self.name = "NEON"
+        self.stop_words = {"a","an","the","what","where","who","is","are","how","to","best","good","find","get","nearby","in","of","at","for","some","any"}
+        
+        # INSTANT KNOWLEDGE BASE
+        self.common_kb = {
+            "gravity": "Gravity pulls everything toward the center of the Earth. It's why things fall and why we stay on the ground.",
+            "sky blue": "Sunlight scatters through the atmosphere, and blue light waves scatter more, making the sky look blue.",
+            "honey": "Honey is amazing—it's the only food that basically never expires. Edible honey was found in 3,000-year-old Egyptian tombs!",
+            "banana": "Fun fact: Bananas are technically berries, and they grow on huge herbs, not trees.",
+            "duck": "Ducks are water birds. Males are 'drakes' and females are 'hens'.",
+            "capital of france": "Paris is the capital of France.",
+            "capital of australia": "Canberra is the capital of Australia.",
+            "boiling water": "Water boils at 100°C or 212°F.",
+            "photosynthesis": "That's how plants turn sunlight and water into energy and oxygen."
+        }
+
+    def update_settings(self, settings):
+        self.settings = settings
+        self.live.settings = settings
+
+    @staticmethod
+    def _clean(text):
         text = html.unescape(re.sub(r'<[^>]+>', ' ', text))
         return re.sub(r'\s+', ' ', text).strip()
 
-    def _parse_ddg(self, raw_html):
-        """Advanced extraction of titles, snippets, and source names."""
+    def _fuzzy_subject(self, q):
+        tokens = [w for w in re.findall(r'\b\w+\b', q.lower()) if w not in self.stop_words]
+        return " ".join(tokens) if tokens else q
+
+    def _deep_harvest(self, html_content):
         results = []
-        blocks = re.findall(r'<div class="result__body">.*?</div>\s*</div>', raw_html, re.DOTALL)
-        for block in blocks:
-            title_match = re.search(r'class="result__a"[^>]*>(.*?)</a>', block, re.DOTALL)
-            snippet_match = re.search(r'class="result__snippet"[^>]*>(.*?)</a>', block, re.DOTALL)
-            url_match = re.search(r'class="result__url"[^>]*>(.*?)</a>', block, re.DOTALL)
-            
-            if title_match and snippet_match:
-                results.append({
-                    "title": self._clean_html(title_match.group(1)),
-                    "snippet": self._clean_html(snippet_match.group(1)),
-                    "source": self._clean_html(url_match.group(1)) if url_match else "Web"
-                })
+        blocks = re.findall(r'<div class="(?:result__body|links_main|web-result|nr-n-result|result)">.*?</div>\s*</div>', html_content, re.DOTALL)
+        if not blocks: blocks = re.findall(r'<(?:div|li|p)[^>]*>(.*?)</(?:div|li|p)>', html_content, re.DOTALL)
+        
+        for b in blocks:
+            t_m = re.search(r'<a[^>]+class="[^"]*(?:title|result__a|links_main__ad)[^"]*"[^>]*>(.*?)</a>', b, re.DOTALL)
+            s_m = re.search(r'class="[^"]*(?:snippet|result__snippet|links_main__snippet)[^"]*"[^>]*>(.*?)</a>|</div>', b, re.DOTALL)
+            if t_m and s_m:
+                t, s = self._clean(t_m.group(1)), self._clean(s_m.group(1))
+                if len(s) < 12: continue
+                ph = re.search(r'(\+?[0-9][0-9\-\(\)\. ]{8,15})', s)
+                ad = re.search(r'(\d+ [A-Za-z0-9\. ]+ (?:St|Rd|Ave|Way|Pde|Cct|Lane|Dr|Pl|Ct|Cl|Gr|Sq|Hwy|Highway|Road|Street|Avenue|Boulevard|Blvd))', s, re.IGNORECASE)
+                results.append({"title": t, "snippet": s, "phone": ph.group(0) if ph else None, "address": ad.group(0) if ad else None})
         return results
 
-    def respond(self, query, history):
+    def respond(self, query):
         q_low = query.lower().strip()
         
-        # 1. IMMEDIATE HEURISTICS
-        if q_low in ["time", "date"]: return f"🕒 {datetime.datetime.now().strftime('%I:%M %p, %A, %B %d, %Y')}"
-        if any(k in q_low for k in ["who are you", "your name"]): return "I am N30N C0R3 AI, powered by the C0R3-X Logic Engine."
+        # 1. CONVERSATIONAL LOGIC (Common Sense & Identity)
+        # Handle Name Introductions & "What's yours?"
+        name_pattern = re.search(r"\b(?:my name is|i'm|i am|call me)\s+([a-zA-Z]+)", q_low)
+        asking_name = any(x in q_low for x in ["your name", "who are you", "whats yours", "what is yours"])
+        
+        if name_pattern or asking_name:
+            greeting = ""
+            if name_pattern:
+                user_name = name_pattern.group(1).title()
+                greeting = f"Nice to meet you, {user_name}! "
+            
+            if asking_name:
+                return greeting + f"I'm {self.name}. What's up?"
+            elif name_pattern:
+                return greeting + f"I'm {self.name}, by the way. How can I help you today?"
 
-        # 2. INTENT CLASSIFICATION
-        intent = "general"
-        for key, pattern in self.intent_patterns.items():
-            if re.search(pattern, q_low):
-                intent = key
-                break
-        
-        is_local = any(loc in q_low for loc in self.local_keywords)
+        # Standard Greetings
+        if q_low in ["hi", "hello", "hey", "yo", "sup"]:
+            return f"Hey! I'm {self.name}. What's on your mind?"
 
-        # 3. CONTEXT SYNTHESIS
-        pronouns = {"it", "they", "them", "there", "here", "its", "those", "these", "that", "him", "her"}
-        words = q_low.split()
-        needs_context = len(words) < 3 or any(w in pronouns for w in words)
-        
-        effective_query = query
-        if needs_context and self.last_subject:
-            effective_query = f"{query} {self.last_subject}"
-        
-        # Update Subject Tracking
-        clean_sub = re.sub(r'\b(what|where|who|is|are|the|best|good|find|me|search|for|how|to|any|nearby|tell|about)\b', '', q_low).strip()
-        if len(clean_sub) > 3 and not any(w in pronouns for w in words):
-            self.last_subject = clean_sub
+        # Small Talk
+        if any(x in q_low for x in ["how are you", "hows it going", "how you doing"]):
+            return "I'm doing great! Just sitting here in the cloud, ready to help. How are things with you?"
 
-        # 4. MULTI-PATH RESEARCH DATA ACQUISITION
-        research_data = []
-        search_variants = [effective_query]
+        # Fact Trigger
+        if any(x in q_low for x in ["tell me a fact", "give me a fact", "random fact"]):
+            fact_key = random.choice(list(self.common_kb.keys()))
+            return f"Did you know? {self.common_kb[fact_key]}"
+
+        if q_low in ["time", "date"]: 
+            return f"It's {datetime.datetime.now().strftime('%I:%M %p on %A, %B %d')}."
         
-        if intent in ["shopping", "food"] or is_local:
-            search_variants.append(f"{effective_query} locations address contact")
-            search_variants.append(f"{effective_query} reviews ratings")
-        elif intent == "howto":
-            search_variants.append(f"{effective_query} step by step instructions")
+        # 2. COMMON KNOWLEDGE
+        for key, val in self.common_kb.items():
+            # Check for specific mention or "what is [key]"
+            if key in q_low and (len(q_low.split()) < 5 or any(x in q_low for x in ["what is", "tell me about"])):
+                return f"I know about that! {val}"
+
+        is_fact_query = any(x in q_low for x in ["what is", "who is", "who was", "where is", "define", "history of", "how does"])
+
+        # 3. BRAIN SYNTHESIS
+        subject = self._fuzzy_subject(query)
+        if len(subject) > 2: self.last_subject = subject
         
-        seen_snippets = set()
-        for variant in search_variants[:2]:
-            raw_html = self._fetch(f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(variant)}")
-            scraped = self._parse_ddg(raw_html)
+        # Logic: Location/Commerce expansion
+        search_list = [query, subject]
+        if any(k in q_low for k in ["shop", "grocer", "buy", "eat", "restaurant", "store", "cafe", "location"]):
+            search_list.append(f"{subject} location address contact hours")
+        
+        aggregated = []
+        seen = set()
+        for term in search_list[:2]:
+            raw = self.live._fetch(f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(term)}")
+            scraped = self._deep_harvest(raw)
             for item in scraped:
-                if item["snippet"].lower() not in seen_snippets:
-                    research_data.append(item)
-                    seen_snippets.add(item["snippet"].lower())
+                if item["title"].lower() not in seen:
+                    aggregated.append(item); seen.add(item["title"].lower())
 
-        # 5. DATA SCORING & COGNITIVE ANALYSIS
-        scored_results = []
-        query_keywords = set(re.findall(r'\b\w{3,}\b', effective_query.lower()))
-        
-        for item in research_data:
+        # Scoring
+        keywords = set(re.findall(r'\b\w{3,}\b', query.lower()))
+        for item in aggregated:
             score = 0
-            combined_text = (item["title"] + " " + item["snippet"]).lower()
-            for kw in query_keywords:
-                if kw in combined_text: score += 10
-            if is_local and any(loc in combined_text for loc in self.local_keywords):
-                score += 15
-            if any(marker in combined_text for marker in ["st ", "rd ", "ave ", "highway", "mall", "centre", "shop ", "ph:"]):
-                score += 8
-            scored_results.append((score, item))
-        
-        scored_results.sort(key=lambda x: x[0], reverse=True)
-        top_tier = [x[1] for x in scored_results if x[0] > 0]
+            text = (item["title"] + " " + item["snippet"]).lower()
+            for kw in keywords:
+                if kw in text: score += 30
+            
+            if is_fact_query:
+                # Prioritize longer explanations for facts
+                score += min(len(item["snippet"]) // 10, 40)
+            else:
+                if item["address"]: score += 50
+                if item["phone"]: score += 30
+            item["_score"] = score
 
-        # 6. RESPONSE REFINEMENT
-        if not top_tier:
-            return "I couldn't synthesize a definitive answer from current research layers. Please try a more specific query, including a suburb or detailed topic."
+        aggregated.sort(key=lambda x: x["_score"], reverse=True)
+        top = [x for x in aggregated if x["_score"] > 0]
 
-        final_output = f"⚡ **C0R3-X COGNITIVE REPORT: {self.last_subject.upper()}**\n"
-        locations = [i for i in top_tier if any(k in (i["title"] + i["snippet"]).lower() for k in ["st ", "rd ", "ave ", "open", "address", "phone", "located", "ph:"])]
-        factual = [i for i in top_tier if i not in locations]
+        # 4. FINAL HUMAN RESPONSE
+        if not top:
+            # More aggressive Wikipedia fallback for factual queries
+            if len(self.last_subject) > 2:
+                wiki = self.live._fetch(f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(self.last_subject.replace(' ', '_'))}")
+                try:
+                    js = json.loads(wiki)
+                    if js.get("extract"): return f"Here is the factual summary for {self.last_subject.upper()}:\n\n{js['extract']}"
+                except: pass
+            return "I'm not quite sure about that one. Could you give me more details or check the spelling?"
 
-        if (intent in ["shopping", "food"] or is_local) and locations:
-            final_output += "\n📍 **VERIFIED LOCATIONS & ENTITIES:**\n"
-            for loc in locations[:6]:
-                addr_match = re.search(r'\d+ [A-Za-z]+ (?:St|Rd|Ave|Hwy|Way|Pde|Cct)', loc["snippet"])
-                addr = f" - {addr_match.group(0)}" if addr_match else ""
-                final_output += f"• **{loc['title']}**{addr}\n  _{loc['snippet']}_\n"
+        report = f"Alright, here's what I synthesized for {self.last_subject.upper()}:\n"
+        entities = [i for i in top if i["address"] or i["phone"] or any(k in i["title"].lower() for k in ["shop","store","market","grocer","restaurant"])]
+        general = [i for i in top if i not in entities]
 
-        if factual:
-            final_output += "\n🔍 **RESEARCH SYNTHESIS:**\n"
-            for fact in factual[:6]:
-                final_output += f"• {fact['snippet']}\n"
+        if entities:
+            report += "\n📍 Best spots and contact info found:\n"
+            for e in entities[:12]:
+                ad = f" | 🏠 {e['address']}" if e["address"] else ""
+                ph = f" | 📞 {e['phone']}" if e["phone"] else ""
+                report += f"• **{e['title']}**{ad}{ph}\n  {e['snippet']}\n"
+            report += f"\n🗺️ View on **[Google Maps](https://www.google.com/maps/search/{urllib.parse.quote(query)})**\n"
 
+        if general:
+            report += "\n🔍 Other useful info:\n"
+            for g in general[:8]: report += f"• {g['snippet']}\n"
+
+        # Math Logic
         if re.search(r'[\d\+\-\*\/\(\)\^]', query) and any(c in query for c in "+-*/"):
             try:
-                expr = query.replace("^", "**")
-                clean_expr = re.sub(r'[^0-9\+\-\*\/\(\)\.\%\s\*\^a-zA-Z]', '', expr)
-                math_val = eval(clean_expr, {'__builtins__': None}, {k: getattr(math, k) for k in dir(math) if not k.startswith('_')})
-                final_output = f"🔢 **CALCULATION:** {math_val}\n\n" + final_output
+                math_val = eval(re.sub(r'[^0-9\+\-\*\/\(\)\.\%\s\^a-zA-Z]', '', query.replace("^", "**")), {'__builtins__': None}, {k: getattr(math, k) for k in dir(math) if not k.startswith('_')})
+                report = f"Calculated result: **{math_val}**\n\n" + report
             except: pass
 
-        return final_output.strip()
+        return report.strip()
 
 # ============================================================================
-# INFRASTRUCTURE (Storage, Settings, UI)
+# INFRASTRUCTURE (Persistent Memory & UI)
 # ============================================================================
 
 class MemoryDatabase:
@@ -314,9 +360,7 @@ class NeonUI:
             "web_search": tk.BooleanVar(value=_get_val("web_search", True)),
             "wikipedia": tk.BooleanVar(value=_get_val("wikipedia", True)),
             "live_search": tk.BooleanVar(value=_get_val("live_search", True)),
-            "github_search": tk.BooleanVar(value=_get_val("github_search", False)),
-            "reddit_search": tk.BooleanVar(value=_get_val("reddit_search", False)),
-            "news_search": tk.BooleanVar(value=_get_val("news_search", False)),
+            "weather_api_key": tk.StringVar(value=str(self.settings.get("weather_api_key", ""))),
             "ad_filter": tk.BooleanVar(value=_get_val("ad_filter", True)),
             "save_memory": tk.BooleanVar(value=_get_val("save_memory", True)),
             "save_locally": tk.BooleanVar(value=_get_val("save_locally", False)),
@@ -326,11 +370,13 @@ class NeonUI:
         def _l(t): tk.Label(container, text=t, bg=theme["bg"], fg=theme["accent"], font=("Consolas", 10, "bold")).pack(anchor="w", pady=(15, 2))
         _l("UI THEME"); tk.OptionMenu(container, v["theme"], *self.themes.keys()).pack(fill=tk.X)
         _l("INTELLIGENCE MODE"); tk.OptionMenu(container, v["intelligence"], "Fast", "Balanced", "Deep", "Local Only").pack(fill=tk.X)
-        _l("RESPONSE STYLE"); tk.OptionMenu(container, v["response_style"], "Short", "Balanced", "Detailed").pack(fill=tk.X)
         _l("SEARCH SPEED"); tk.OptionMenu(container, v["speed"], "Fast", "Normal", "Deep").pack(fill=tk.X)
         _l("ACTIVE DATA SOURCES")
-        for key, label in [("web_search", "Web Search (General)"), ("wikipedia", "Wikipedia (Factual)"), ("live_search", "Live Hours Data"), ("github_search", "GitHub Search"), ("reddit_search", "Reddit Search"), ("news_search", "Google News")]:
-            tk.Checkbutton(container, text=label, variable=v[key], bg=theme["bg"], fg=theme["text"], selectcolor=theme["field"], activebackground=theme["bg"]).pack(anchor="w")
+        tk.Checkbutton(container, text="Web Search (General)", variable=v["web_search"], bg=theme["bg"], fg=theme["text"], selectcolor=theme["field"], activebackground=theme["bg"]).pack(anchor="w")
+        tk.Checkbutton(container, text="Live Search (Real-time)", variable=v["live_search"], bg=theme["bg"], fg=theme["text"], selectcolor=theme["field"], activebackground=theme["bg"]).pack(anchor="w")
+        _l("LIVE API KEYS (Optional)")
+        tk.Label(container, text="OpenWeatherMap API Key", bg=theme["bg"], fg=theme["text"], font=("Consolas", 9)).pack(anchor="w")
+        tk.Entry(container, textvariable=v["weather_api_key"], bg=theme["field"], fg=theme["text"], bd=0, show="*").pack(fill=tk.X, ipady=5)
         _l("STORAGE")
         tk.Checkbutton(container, text="Save Chat Memory", variable=v["save_memory"], bg=theme["bg"], fg=theme["text"], selectcolor=theme["field"], activebackground=theme["bg"]).pack(anchor="w")
         tk.Checkbutton(container, text="External JSON Database", variable=v["save_locally"], bg=theme["bg"], fg=theme["text"], selectcolor=theme["field"], activebackground=theme["bg"]).pack(anchor="w")
@@ -365,7 +411,7 @@ class NeonUI:
         self.chat_list.delete(0, tk.END)
         for cid, chat in self.memory.get_chats(): self.chat_list.insert(tk.END, chat["name"])
 
-    def _switch_chat(self, e):
+    def _switch_chat(self):
         idx = self.chat_list.curselection()
         if idx:
             chats = self.memory.get_chats()
@@ -399,7 +445,7 @@ class NeonUI:
         if text: self.add_msg("YOU", text, "user"); self.memory.add_msg(self.chat_id, "user", text); self.entry.delete(0, tk.END); threading.Thread(target=self._process, args=(text,)).start()
 
     def _process(self, text):
-        resp = self.brain.respond(text, self.memory.get_history(self.chat_id))
+        resp = self.brain.respond(text)
         self.root.after(0, lambda: self.add_msg("NEON", resp, "bot")); self.memory.add_msg(self.chat_id, "bot", resp)
 
     def add_msg(self, sender, msg, tag):
@@ -412,3 +458,4 @@ class NeonUI:
 
 if __name__ == "__main__":
     root = tk.Tk(); NeonUI(root); root.mainloop()
+
